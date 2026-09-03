@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reachability test</title>
+<style>
+  body{font:16px/1.5 ui-sans-serif,system-ui,sans-serif;margin:0;background:#f3f0ea;color:#0e1319;padding:40px 24px}
+  .wrap{max-width:640px;margin:0 auto}
+  h1{font-size:28px;letter-spacing:-.02em;margin:0 0 4px}
+  .ok{display:inline-block;background:#1f7a5c;color:#fff;padding:6px 12px;font-weight:600;letter-spacing:.08em;font-size:13px;text-transform:uppercase}
+  ul{list-style:none;padding:0;margin:24px 0 0;border-top:1px solid #d3cdc1}
+  li{border-bottom:1px solid #d3cdc1;padding:12px 0;display:flex;justify-content:space-between;gap:16px;align-items:baseline}
+  a{color:#0e1319}
+  code{font:14px ui-monospace,Menlo,monospace;color:#6f7a86}
+  p{color:#5c564c;font-size:14px}
+</style>
+<div class="wrap">
+  <h1>Reachability test</h1>
+  <span class="ok">github.io reached</span>
+  <p>If you can read this on the school Chromebook, GitHub Pages is not filtered. Now click each link below and note which load and which show a block page or a certificate error.</p>
+  <ul>
+    <li><a href="https://script.google.com/home">script.google.com</a><code>Apps Script</code></li>
+    <li><a href="https://pages.dev">pages.dev</a><code>Cloudflare Pages</code></li>
+    <li><a href="https://web.app">web.app</a><code>Firebase Hosting</code></li>
+    <li><a href="https://philadelphia-mandate.vercel.app">philadelphia-mandate.vercel.app</a><code>known blocked</code></li>
+    <li><a href="https://corvian.dev">corvian.dev</a><code>known cert error</code></li>
+  </ul>
+  <p id="t"></p>
+</div>
+<script>document.getElementById('t').textContent='Loaded '+new Date().toString();</script>
