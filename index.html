@@ -1,29 +1,74 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Reachability test</title>
+<title>Checks</title>
 <style>
-  body{font:16px/1.5 ui-sans-serif,system-ui,sans-serif;margin:0;background:#f3f0ea;color:#0e1319;padding:40px 24px}
-  .wrap{max-width:640px;margin:0 auto}
-  h1{font-size:28px;letter-spacing:-.02em;margin:0 0 4px}
-  .ok{display:inline-block;background:#1f7a5c;color:#fff;padding:6px 12px;font-weight:600;letter-spacing:.08em;font-size:13px;text-transform:uppercase}
-  ul{list-style:none;padding:0;margin:24px 0 0;border-top:1px solid #d3cdc1}
-  li{border-bottom:1px solid #d3cdc1;padding:12px 0;display:flex;justify-content:space-between;gap:16px;align-items:baseline}
-  a{color:#0e1319}
-  code{font:14px ui-monospace,Menlo,monospace;color:#6f7a86}
-  p{color:#5c564c;font-size:14px}
+  body{font:16px/1.55 ui-sans-serif,system-ui,sans-serif;margin:0;background:#f3f0ea;color:#0e1319;padding:36px 24px 80px}
+  .wrap{max-width:680px;margin:0 auto}
+  h1{font-size:30px;letter-spacing:-.02em;margin:0 0 6px}
+  h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#8c8578;margin:36px 0 10px}
+  .ok{display:inline-block;background:#1f7a5c;color:#fff;padding:6px 12px;font-weight:600;letter-spacing:.08em;font-size:12px;text-transform:uppercase}
+  ol{padding-left:20px;margin:0}
+  li{margin:0 0 18px}
+  a{color:#0e1319;font-weight:600}
+  .why{color:#5c564c;font-size:14px;margin-top:2px}
+  .good{color:#1f7a5c;font-weight:600}
+  .bad{color:#cc4127;font-weight:600}
+  p.lead{color:#5c564c}
+  hr{border:0;border-top:1px solid #d3cdc1;margin:32px 0}
 </style>
 <div class="wrap">
-  <h1>Reachability test</h1>
-  <span class="ok">github.io reached</span>
-  <p>If you can read this on the school Chromebook, GitHub Pages is not filtered. Now click each link below and note which load and which show a block page or a certificate error.</p>
-  <ul>
-    <li><a href="https://script.google.com/home">script.google.com</a><code>Apps Script</code></li>
-    <li><a href="https://pages.dev">pages.dev</a><code>Cloudflare Pages</code></li>
-    <li><a href="https://web.app">web.app</a><code>Firebase Hosting</code></li>
-    <li><a href="https://philadelphia-mandate.vercel.app">philadelphia-mandate.vercel.app</a><code>known blocked</code></li>
-    <li><a href="https://corvian.dev">corvian.dev</a><code>known cert error</code></li>
-  </ul>
-  <p id="t"></p>
+  <h1>Checks</h1>
+  <span class="ok">this page loaded, so github.io is fine</span>
+  <p class="lead">Work down the list on the school Chromebook, on school wifi. Note what each one does. Middle-click or Ctrl+click to open in a new tab so you keep this list.</p>
+
+  <h2>1. Does the presentation itself work here</h2>
+  <p class="lead">This is the version that needs no network and no student devices. It has to work, so it matters more than anything else on this page.</p>
+  <ol>
+    <li>
+      <a href="https://leosutter215.github.io/mandate/stage/?offline=1" target="_blank">Open the stage</a>
+      <div class="why">Leave it open. This is what goes on the smartboard.</div>
+    </li>
+    <li>
+      <a href="https://leosutter215.github.io/mandate/host/?offline=1" target="_blank">Open the host controls</a>
+      <div class="why">In a second tab or window. Press <b>Space</b>. Then switch to the stage tab and watch the clock. If the year and month are moving, everything works.</div>
+    </li>
+    <li>
+      Back on the host, press <b>1</b>, then <b>3</b>, then <b>T</b>.
+      <div class="why">1 and 3 pass two policies. T reveals the big red number. If the stage reacts to all three, the whole thing is working on this machine.</div>
+    </li>
+  </ol>
+
+  <h2>2. Can the student machines ever work</h2>
+  <p class="lead">Apps Script sends its answers from a second address. If that address is blocked, the nine-Chromebook version is impossible and we stop pursuing it.</p>
+  <ol start="4">
+    <li>
+      <a href="https://script.googleusercontent.com/" target="_blank">script.googleusercontent.com</a>
+      <div class="why">
+        <span class="good">A Google error page, or a mostly blank page</span> means the address is allowed. That is what we want.<br>
+        <span class="bad">The blue Page Blocked screen</span> means it is not, and the nine-machine version is dead.
+      </div>
+    </li>
+  </ol>
+
+  <h2>3. Backups, only if you have a minute</h2>
+  <p class="lead">Other places the shared scratchpad could live, if Apps Script is out.</p>
+  <ol start="5">
+    <li>
+      <a href="https://firebasedatabase.app/" target="_blank">firebasedatabase.app</a>
+      <div class="why">Google's live database service.</div>
+    </li>
+    <li>
+      <a href="https://raw.githubusercontent.com/leosutter215/mandate-reach/main/index.html" target="_blank">raw.githubusercontent.com</a>
+      <div class="why">Should show plain text. Same family as this page, different address.</div>
+    </li>
+    <li>
+      <a href="https://api.github.com/rate_limit" target="_blank">api.github.com</a>
+      <div class="why">Should show a small block of data.</div>
+    </li>
+  </ol>
+
+  <hr>
+  <p class="lead" id="t"></p>
 </div>
 <script>document.getElementById('t').textContent='Loaded '+new Date().toString();</script>
