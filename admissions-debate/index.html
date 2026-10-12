@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who Gets the Seat?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f5f4f0;--grid:#dfe6ea;--lead:#34373a;--soft:#6d7176;--faint:#a9acae;--blue:#3f78b5;--red:#c9564a;--green:#4c8a5a;--hand:"Kalam","Segoe Print","Bradley Hand",cursive}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#d9d8d2;overflow:hidden}
+body{display:grid;place-items:center;font-family:var(--hand)}
+#stage{width:1600px;height:900px;position:relative;transform-origin:center;background:var(--paper);box-shadow:0 2px 0 #cfcdc5,0 30px 70px rgba(0,0,0,.18)}
+#stage::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;opacity:.55}
+svg#board{position:absolute;inset:0;width:100%;height:100%}
+.ink{fill:none;stroke-linecap:round;stroke-linejoin:round;filter:url(#pencil)}
+.ghost{stroke-opacity:.35}
+text{font-family:var(--hand);stroke-width:.8;stroke-opacity:.35}
+.hit{cursor:pointer}
+.hit:focus{outline:none}
+.hit:focus-visible .box{stroke:var(--blue);stroke-width:4}
+#overlay{position:absolute;inset:0;pointer-events:none}
+.tally{position:absolute;display:flex;align-items:center;gap:10px;pointer-events:auto;font-family:var(--hand);font-size:26px;color:var(--soft)}
+.tally input{width:78px;font:700 34px var(--hand);color:var(--lead);background:transparent;border:0;border-bottom:3px dashed var(--faint);text-align:center}
+.tally input:focus{outline:none;border-bottom-color:var(--blue)}
+.tally .delta{font-weight:700;font-size:30px;min-width:50px}
+#notes{position:fixed;left:0;right:0;bottom:0;max-height:40vh;overflow:auto;background:rgba(30,32,34,.96);color:#eee;padding:20px 28px calc(20px + env(safe-area-inset-bottom,0px));font:17px/1.5 system-ui,sans-serif;transform:translateY(100%);transition:transform .25s;z-index:10;border-top:3px solid #c9564a}
+#notes.open{transform:none}
+#notes b{color:#f0c36b}
+#progress{position:fixed;left:0;bottom:0;height:4px;background:var(--red);width:0;transition:width .3s;z-index:5}
+.nav{position:fixed;top:0;bottom:0;width:9vw;background:none;border:0;cursor:pointer;z-index:4}
+#pz{left:0}#nz{right:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg id="board" viewBox="0 0 1600 900" role="img" aria-label="Presentation: who gets the seat at Philadelphia's magnet high schools">
+    <defs>
+      <filter id="pencil" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="2" seed="3" result="g"/>
+        <feDisplacementMap in="SourceGraphic" in2="g" scale="1.5"/>
+      </filter>
+    </defs>
+    <g id="scene"></g><g id="ui"></g>
+  </svg>
+  <div id="overlay"></div>
+</div>
+<button class="nav" id="pz" aria-label="Back"></button>
+<button class="nav" id="nz" aria-label="Next"></button>
+<div id="progress"></div>
+<aside id="notes" aria-live="polite"></aside>
+
+<script>
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const stage=document.getElementById('stage');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function fit(){stage.style.transform='scale('+Math.min(innerWidth/1660,innerHeight/950)+')'}
+addEventListener('resize',fit);fit();
+const $=id=>document.getElementById(id);
+const el=(tag,a={})=>{const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);return e};
+const sub=(parent)=>{const g=el('g');parent.appendChild(g);return g};
+let fast=false;
+const pending=new Set();
+const wait=ms=>new Promise(r=>{if(fast||reduce)return r();const t=setTimeout(()=>{pending.delete(done);r()},ms);const done=()=>{clearTimeout(t);pending.delete(done);r()};pending.add(done);});
+
+/* ================= pencil engine ================= */
+let seed=7;function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647}
+function wobble(pts,amt){
+  const out=[];
+  for(let k=0;k<pts.length-1;k++){
+    const [x1,y1]=pts[k],[x2,y2]=pts[k+1];const len=Math.hypot(x2-x1,y2-y1)||1,n=Math.max(2,Math.round(len/60));
+    const nx=-(y2-y1)/len,ny=(x2-x1)/len;
+    for(let s=0;s<n;s++){const t=s/n,j=(rnd()-.5)*amt;out.push([x1+(x2-x1)*t+nx*j,y1+(y2-y1)*t+ny*j]);}
+  }
+  out.push(pts[pts.length-1]);
+  let d='M'+out[0][0].toFixed(1)+' '+out[0][1].toFixed(1);
+  for(let k=1;k<out.length-1;k++){const mx=(out[k][0]+out[k+1][0])/2,my=(out[k][1]+out[k+1][1])/2;d+=' Q'+out[k][0].toFixed(1)+' '+out[k][1].toFixed(1)+' '+mx.toFixed(1)+' '+my.toFixed(1);}
+  const L=out[out.length-1];return d+' L'+L[0].toFixed(1)+' '+L[1].toFixed(1);
+}
+const ring=(cx,cy,r,turn=1.08)=>{const p=[],s=rnd()*6.28,n=26;for(let k=0;k<=n;k++){const a=s+k/n*6.28*turn,rr=r*(1+(rnd()-.5)*.07);p.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);}return p};
+const hatch=(cx,cy,r)=>{const p=[];let f=0;for(let y=-r+3;y<=r-3;y+=5){const w=Math.sqrt(r*r-y*y)-2;p.push(f?[cx+w,cy+y]:[cx-w,cy+y]);p.push(f?[cx-w,cy+y+2.5]:[cx+w,cy+y+2.5]);f^=1;}return p};
+
+function line(parent,pts,{w=3,color='var(--lead)',amt=3,ghost=true,dur=380}={}){
+  const els=[];
+  for(let p=0;p<(ghost?2:1);p++){
+    const e=el('path',{d:wobble(pts,amt*(p?1.6:1)),class:'ink'+(p?' ghost':'')});
+    e.style.stroke=color;e.style.strokeWidth=p?w*.7:w;parent.appendChild(e);
+    const L=e.getTotalLength();e.style.strokeDasharray=L;e.style.strokeDashoffset=(reduce||fast)?0:L;els.push(e);
+  }
+  return {kind:'line',els,dur};
+}
+function box(parent,x,y,w,h,o={}){ // four separate sides so corners stay crisp
+  return [[[x-3,y],[x+w+3,y+1]],[[x+w,y-3],[x+w-1,y+h+3]],[[x+w+3,y+h-1],[x-3,y+h]],[[x,y+h+3],[x+1,y-3]]]
+    .map(seg=>line(parent,seg,Object.assign({w:2.4,amt:1,ghost:false,dur:90},o)));
+}
+let clipN=0;
+function write(parent,x,y,str,{size=36,weight=400,anchor='start',color='var(--lead)',speed=1}={}){
+  const g=el('g');parent.appendChild(g);
+  const t=el('text',{x,y,'font-size':size,'font-weight':weight,'text-anchor':anchor});
+  t.style.fill=color;t.style.stroke=color;t.textContent=str;g.appendChild(t);
+  const bb=t.getBBox(),id='w'+(clipN++);
+  const cp=el('clipPath',{id}),r=el('rect',{x:bb.x-10,y:bb.y-16,width:bb.width+40,height:bb.height+32});
+  r.style.transformBox='fill-box';r.style.transformOrigin='0 50%';r.style.transform=(reduce||fast)?'scaleX(1)':'scaleX(0)';
+  cp.appendChild(r);parent.insertBefore(cp,g);g.setAttribute('clip-path','url(#'+id+')');
+  return {kind:'text',mask:r,dur:Math.min(1000,Math.max(180,str.length*22))/speed,node:t};
+}
+function wrap(str,max){const out=[];let cur='';for(const w of str.split(' ')){if((cur+' '+w).trim().length>max){out.push(cur.trim());cur=w;}else cur+=' '+w;}if(cur.trim())out.push(cur.trim());return out}
+function play(it){
+  if(reduce||fast){if(it.kind==='text')it.mask.style.transform='scaleX(1)';else it.els.forEach(e=>e.style.strokeDashoffset=0);return Promise.resolve();}
+  if(it.kind==='text')return it.mask.animate([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:it.dur,easing:'cubic-bezier(.3,.1,.5,1)',fill:'forwards'}).finished.catch(()=>{});
+  return Promise.all(it.els.map((e,k)=>{const L=parseFloat(e.style.strokeDasharray);return e.animate([{strokeDashoffset:L},{strokeDashoffset:0}],{duration:it.dur,delay:k*50,easing:'cubic-bezier(.55,.1,.35,1)',fill:'forwards'}).finished.catch(()=>{})}));
+}
+async function run(items,overlap=.5){items=items.flat(Infinity);const ps=[];for(const it of items){ps.push(play(it));await wait(it.dur*overlap);}return Promise.all(ps)}
+async function fadeOut(g){if(!g||!g.parentNode)return;if(!(fast||reduce))await g.animate([{opacity:1},{opacity:0}],{duration:280,fill:'forwards'}).finished.catch(()=>{});g.remove()}
+
+/* ================= shared pieces ================= */
+function title(g,str,rule){
+  const items=[write(g,140,110,str,{size:84,weight:700})];
+  if(rule)items.push(write(g,140,162,rule,{size:30,color:'var(--soft)',speed:1.6}));
+  return items;
+}
+async function caption(S,str,color='var(--lead)'){S.cap.innerHTML='';await run([write(S.cap,140,385,str,{size:34,weight:700,color})])}
+
+/* ================= the made-up class ================= */
+const PCTS=[5,9,14,18,27,31,35,38,42,46,49,52,55,58,61,63,66,70,73,76,79,82,85,88,91,95,96,97,98,99];
+const ZIP=new Set([18,38,55,61,79]);
+const RUBRIC={95:64,96:81,97:77,98:74,99:88};
+const SEATS=8,BAR=50,TOP=95,PASS=70,CAP=Math.floor(SEATS*0.4);
+const DY=530;
+const students=PCTS.map((p,k)=>({p,x:175+k*43.5,y:DY,zip:ZIP.has(p)}));
+const byP=p=>students.find(s=>s.p===p);
+const gapX=(a,b)=>(byP(a).x+byP(b).x)/2;
+const BARX=gapX(49,52);
+const SEATX=k=>330+k*112, SEATY=245;
+const shuffle=a=>{a=a.slice();for(let k=a.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[a[k],a[j]]=[a[j],a[k]];}return a};
+const ord=n=>n+(n%10===1&&n!==11?'st':n%10===2&&n!==12?'nd':n%10===3&&n!==13?'rd':'th');
+const passers=()=>[95,96,97,98,99].filter(p=>RUBRIC[p]>=PASS).sort((a,b)=>RUBRIC[b]-RUBRIC[a]);
+
+function simBase(S){
+  seed=5;const g=S.base,items=[write(g,140,SEATY+43,'8 seats',{size:38,weight:700})];
+  for(let k=0;k<SEATS;k++)items.push(box(g,SEATX(k),SEATY,92,62,{dur:60}));
+  students.forEach(s=>items.push(line(g,ring(s.x,s.y,13),{w:2.4,amt:.5,ghost:false,dur:50})));
+  students.forEach(s=>items.push(write(g,s.x,DY+42,String(s.p),{size:20,anchor:'middle',color:'var(--soft)',speed:3})));
+  items.push(write(g,140,700,'Each circle is one made-up student. The number is their test percentile.',{size:22,color:'var(--soft)',speed:2}));
+  return run(items,.18);
+}
+function barLine(g,x,color,label){
+  const items=[];for(let y=440;y<610;y+=34)items.push(line(g,[[x,y],[x,y+18]],{w:2.6,amt:.6,ghost:false,color,dur:45}));
+  items.push(write(g,x,428,label,{size:24,anchor:'middle',color}));return items;
+}
+function bracket(g,x1,x2,y,up,color){const h=up?-14:14;return line(g,[[x1,y],[x1,y+h],[x2,y+h],[x2,y]],{w:2.6,amt:1.2,ghost:false,color,dur:300})}
+function check(g,x,y,ok){const c=ok?'var(--blue)':'var(--red)';
+  return ok?line(g,[[x-9,y],[x-2,y+8],[x+11,y-10]],{w:3,amt:.5,ghost:false,color:c,dur:200})
+           :line(g,[[x-8,y-8],[x+8,y+8],[x+7,y+8],[x+8,y-8],[x-8,y+8]],{w:3,amt:.5,ghost:false,color:c,dur:220});}
+async function seat(S,p,kind){
+  const s=byP(p),c=(kind==='guaranteed'||kind==='merit')?'var(--blue)':'var(--red)',k=S.seatN++;
+  await run([line(S.res,hatch(s.x,s.y,12),{w:2,amt:.3,ghost:false,color:c,dur:120}),
+             line(S.res,ring(s.x,s.y,19,1.15),{w:2.8,amt:1,ghost:false,color:c,dur:110}),
+             write(S.res,SEATX(k)+46,SEATY+44,String(p),{size:34,weight:700,anchor:'middle',color:c,speed:2})],.6);
+}
+async function stats(S,picked){
+  const n=picked.length,avg=Math.round(picked.reduce((a,p)=>a+p,0)/n);
+  const cusp=picked.filter(p=>p>=50&&p<=66).length,cuspAll=PCTS.filter(p=>p>=50&&p<=66).length;
+  const top=picked.filter(p=>p>=TOP).length,topAll=PCTS.filter(p=>p>=TOP).length,below=picked.filter(p=>p<BAR).length;
+  const items=[write(S.res,140,752,'Average seat: '+ord(avg)+' percentile',{size:30}),
+               write(S.res,620,752,'Cusp kids (50 to 66): '+cusp+' of '+cuspAll,{size:30}),
+               write(S.res,1090,752,'95th and up: '+top+' of '+topAll,{size:30})];
+  if(below)items.push(write(S.res,140,796,below+' seat'+(below>1?'s':'')+' went below the 50th percentile',{size:26,color:'var(--red)'}));
+  await run(items,.3);
+}
+function clearRes(S){S.res.innerHTML='';S.seatN=0}
+
+/* ================= the four systems ================= */
+const SYSTEMS=[
+{ key:'merit', name:'Pure merit', rule:'Best student first. Keep giving out seats until they run out.',
+  sim:[async S=>{await caption(S,'Highest score first, until the seats run out.','var(--blue)');
+    const picked=PCTS.slice().sort((a,b)=>b-a).slice(0,SEATS);for(const p of picked)await seat(S,p,'merit');await stats(S,picked);}],
+  stories:[
+    {name:'Ava M.',lines:['Test score: 99th percentile','Private tutoring every week since 4th grade','Applied to 5 schools'],outcome:'Offered her first choice.',c:'var(--blue)'},
+    {name:'Nate O.',lines:['Test score: 93rd percentile','No tutoring','Watches two younger siblings after school'],outcome:'Not offered. Missed the cutoff by 2 points.',c:'var(--red)'}],
+  pros:['Rewards years of hard work','Simple rules that everyone can see','Keeps the pace high for the strongest students'],
+  cons:['Test scores track tutoring and money','One bad test day can decide your high school','Top schools stop looking like the city'] },
+{ key:'lottery', name:'Pure lottery', rule:'No requirements. Every name goes in the hat.', reroll:true,
+  sim:[async S=>{await caption(S,'8 names drawn at random.','var(--red)');
+    const picked=shuffle(PCTS).slice(0,SEATS);for(const p of picked)await seat(S,p,'lottery');await stats(S,picked);}],
+  stories:[
+    {name:'Jordan K.',lines:['Test score: 99th percentile','Straight As, perfect attendance','Applied to 5 schools'],outcome:'Not selected anywhere. Family chose private school.',c:'var(--red)'},
+    {name:'Sam P.',lines:['Test score: 31st percentile','Attendance: 78%','Applied to 1 school'],outcome:'Offered. Placed in classes built for the top 10%.',c:'var(--blue)'}],
+  pros:['Every student has the exact same chance','Money and tutoring give no advantage','Cheap and simple to run'],
+  cons:['Hard work counts for nothing','Students can land in classes far above their level','Families who can afford it may leave for private school'] },
+{ key:'now', name:'Philly now', rule:'Clear a bar, then a lottery. Priority for some ZIP codes.', reroll:true,
+  setup:async S=>{seed=77;const items=barLine(S.rules,BARX,'var(--lead)','the bar');
+    students.filter(s=>s.zip).forEach(s=>items.push(line(S.rules,[[s.x-9,s.y-24],[s.x,s.y-36],[s.x+9,s.y-24],[s.x-9,s.y-24]],{w:2.2,amt:.4,ghost:false,color:'var(--red)',dur:110})));
+    items.push(write(S.rules,1460,610,'triangle = lives in a priority ZIP code',{size:24,anchor:'end',color:'var(--red)'}));await run(items,.35);},
+  sim:[async S=>{await caption(S,'Qualified kids in priority ZIP codes first, then random draws.','var(--red)');
+    const q=PCTS.filter(p=>p>=BAR),zip=q.filter(p=>ZIP.has(p)),picked=[...zip];
+    for(const p of zip)await seat(S,p,'zip');
+    for(const p of shuffle(q.filter(p=>!ZIP.has(p)))){if(picked.length>=SEATS)break;picked.push(p);await seat(S,p,'lottery');}
+    await stats(S,picked);}],
+  stories:[
+    {name:'Leah W.',lines:['Test score: 98th percentile','Cleared the bar at all 5 schools','No priority ZIP code'],outcome:'Not selected at any of her 5 schools.',c:'var(--red)'},
+    {name:'Chris D.',lines:['Test score: 71st percentile','Cleared the bar','Lives in a priority ZIP code'],outcome:'Offered his first choice.',c:'var(--blue)'}],
+  pros:['Everyone admitted meets a real standard','Above the bar, score gaps from tutoring matter less','Opened seats to neighborhoods that rarely got in'],
+  cons:['A top scorer and a student who barely qualified get the same odds','Top students can lose out to pure luck','The ZIP code priority is being challenged in court'],
+  fineprint:true },
+{ key:'pools', name:'Sub-pools', rule:'Clear the bar for the lottery. 95th percentile and up can earn a guaranteed seat.', reroll:true, stepped:true,
+  sim:[
+    async S=>{seed=301;await caption(S,'Step 1: Clear the bar and you are in the lottery pool.');
+      await run([barLine(S.rules,BARX,'var(--lead)','the bar'),bracket(S.rules,BARX+12,students[29].x+16,DY+56,false,'var(--lead)'),
+        write(S.rules,(BARX+students[29].x)/2,DY+100,'lottery pool',{size:28,anchor:'middle'})],.35);},
+    async S=>{seed=302;await caption(S,'Step 2: 95th percentile and up can also apply for a guaranteed seat.','var(--blue)');
+      await run([bracket(S.rules,byP(95).x-18,byP(99).x+18,440,true,'var(--blue)'),
+        write(S.rules,(byP(95).x+byP(99).x)/2,410,'guaranteed tier applicants',{size:24,anchor:'middle',color:'var(--blue)'})],.4);},
+    async S=>{seed=303;await caption(S,'Step 3: Past work, teacher letters, and an interview, scored on one rubric. 70 passes.','var(--blue)');
+      const items=[];for(const p of [95,96,97,98,99]){const s=byP(p),ok=RUBRIC[p]>=PASS;
+        items.push(write(S.rules,s.x,DY-26,String(RUBRIC[p]),{size:22,weight:700,anchor:'middle',color:ok?'var(--blue)':'var(--red)',speed:2}));items.push(check(S.rules,s.x,DY-56,ok));}
+      await run(items,.5);},
+    async S=>{seed=304;await caption(S,'Step 4: Guaranteed seats cap at 40%, so 3 of 8. Highest rubric scores win.','var(--blue)');
+      await run([bracket(S.rules,SEATX(0),SEATX(2)+92,SEATY-10,true,'var(--blue)'),
+        write(S.rules,(SEATX(0)+SEATX(2)+92)/2,SEATY-32,'guaranteed (max 40%)',{size:24,anchor:'middle',color:'var(--blue)'})],.4);
+      const P=passers();for(const p of P.slice(0,CAP))await seat(S,p,'guaranteed');
+      const s=byP(P[CAP]);
+      await run([line(S.rules,[[1300,662],[s.x-40,640],[s.x-6,DY+60]],{w:2.6,amt:2,ghost:false,color:'var(--red)',dur:300}),
+        line(S.rules,[[s.x-18,DY+72],[s.x-5,DY+58],[s.x+4,DY+76]],{w:2.6,amt:.5,ghost:false,color:'var(--red)',dur:150}),
+        write(S.rules,1290,676,'passed, but 4th best: goes to the lottery',{size:24,anchor:'end',color:'var(--red)'})],.4);},
+    async S=>{await caption(S,'Step 5: The other 5 seats are a fair lottery for everyone who cleared the bar.','var(--red)');await poolsLottery(S);}
+  ],
+  rerollFn:async S=>{clearRes(S);for(const p of passers().slice(0,CAP))await seat(S,p,'guaranteed');await poolsLottery(S);},
+  stories:[
+    {name:'Owen H.',lines:['Test score: 99th percentile','Applied for a guaranteed seat','Interview: "did not show how he supports classmates"','Rubric score: 62 out of 100'],outcome:'Moved to the lottery. Not selected.',c:'var(--red)'},
+    {name:'Rosa T.',lines:['Test score: 96th percentile','No tutoring','Runs her school\'s peer math tutoring club','Rubric score: 85 out of 100'],outcome:'Guaranteed seat at her first choice.',c:'var(--blue)'}],
+  pros:['Exceptional students are not left to luck','Most seats still go by a fair lottery','The rubric rewards lifting others, not just scores'],
+  cons:['Interviews and letters can favor polished, connected kids','More time and money to run','The 95th percentile line is still just a test score'] }
+];
+async function poolsLottery(S){
+  const picked=passers().slice(0,CAP);
+  for(const p of shuffle(PCTS.filter(p=>p>=BAR&&!picked.includes(p)))){if(picked.length>=SEATS)break;picked.push(p);await seat(S,p,'lottery');}
+  await stats(S,picked);
+}
+
+function storyCard(g,x,st){
+  seed=500+st.name.length;const y=245,w=620,h=540,items=[box(g,x,y,w,h,{w:2.6,dur:160})];
+  items.push(write(g,x+36,y+70,st.name,{size:48,weight:700}));
+  items.push(line(g,[[x+36,y+88],[x+250,y+86]],{w:2.4,amt:1.5,ghost:false,dur:160}));
+  let yy=y+140;
+  st.lines.forEach(l=>wrap(l,40).forEach(t=>{items.push(write(g,x+36,yy,t,{size:30,speed:1.4}));yy+=44;}));
+  yy+=24;items.push(write(g,x+36,yy,'Outcome:',{size:30,weight:700,color:st.c}));yy+=44;
+  wrap(st.outcome,38).forEach(t=>{items.push(write(g,x+36,yy,t,{size:32,weight:700,color:st.c,speed:1.3}));yy+=46;});
+  return items;
+}
+function tchart(g){
+  seed=600;return [line(g,[[160,300],[1440,302]],{w:3,amt:2}),line(g,[[800,230],[801,800]],{w:3,amt:2}),
+    write(g,480,275,'Pros',{size:48,weight:700,anchor:'middle',color:'var(--blue)'}),
+    write(g,1120,275,'Cons',{size:48,weight:700,anchor:'middle',color:'var(--red)'})];
+}
+function tcol(g,list,x0,color){
+  const items=[];let y=370;
+  list.forEach(item=>{seed=700+y+x0;items.push(line(g,[[x0,y-11],[x0+22,y-12]],{w:4,amt:.6,ghost:false,color,dur:120}));
+    wrap(item,31).forEach(t=>{items.push(write(g,x0+40,y,t,{size:32,speed:1.4}));y+=44;});y+=40;});
+  return items;
+}
+
+function systemScene(sys,idx){
+  const beats=[];
+  sys.sim.forEach(fn=>beats.push(async(g,ctx)=>{await fn(ctx.S);if(fn===sys.sim[sys.sim.length-1])ctx.simDone=true;}));
+  beats.push(async(g,ctx)=>{ctx.simDone=false;await fadeOut(ctx.S.root);ctx.st=sub(g);
+    await run([write(ctx.st,140,215,'Two students go through it',{size:30,color:'var(--soft)'}),storyCard(ctx.st,140,sys.stories[0])],.45);});
+  beats.push(async(g,ctx)=>{await run(storyCard(ctx.st,840,sys.stories[1]),.45);});
+  beats.push(async(g,ctx)=>{await fadeOut(ctx.st);ctx.tc=sub(g);await run([tchart(ctx.tc),tcol(ctx.tc,sys.pros,180,'var(--blue)')],.45);});
+  beats.push(async(g,ctx)=>{await run(tcol(ctx.tc,sys.cons,820,'var(--red)'),.45);});
+  if(sys.fineprint)beats.push(async(g,ctx)=>{await fadeOut(ctx.tc);const f=sub(g);seed=950;
+    const items=[box(f,180,230,1240,480,{w:2.6,dur:160}),write(f,230,300,'The fine print',{size:52,weight:700}),
+      write(f,230,360,'The real process is more complex than our simulation:',{size:32,color:'var(--soft)'})];
+    let y=430;['You rank up to 5 schools, not just one','At most one offer, with waitlists and a fallback school','A matching algorithm sorts everyone\'s rankings at the same time'].forEach(t=>{
+      items.push(line(f,[[240,y-11],[262,y-12]],{w:4,amt:.6,ghost:false,dur:110}));items.push(write(f,280,y,t,{size:32,speed:1.4}));y+=56;});
+    items.push(write(f,230,y+30,'We simplified it to focus on one question: what is fair?',{size:34,weight:700,color:'var(--blue)'}));
+    items.push(write(f,230,y+84,'If a full breakdown would be useful, tell me. It could be my next presentation.',{size:30,color:'var(--soft)'}));
+    await run(items,.45);});
+  return {
+    notes:NOTES[sys.key],
+    enter:async(g,ctx)=>{seed=60+idx;
+      await run([title(g,sys.name,sys.rule),write(g,1460,110,'System '+(idx+1)+' of 4',{size:26,anchor:'end',color:'var(--soft)'})],.4);
+      const root=sub(g);ctx.S={root,base:sub(root),rules:sub(root),cap:sub(root),res:sub(root),seatN:0};
+      await simBase(ctx.S);if(sys.setup)await sys.setup(ctx.S);
+    },
+    beats,
+    reroll:sys.reroll?async(g,ctx)=>{if(!ctx.simDone)return;if(sys.rerollFn)await sys.rerollFn(ctx.S);else{clearRes(ctx.S);await sys.sim[0](ctx.S);}}:null
+  };
+}
+
+/* ================= four corners ================= */
+const QUADS=[
+  {name:'Pure merit',desc:'Best student first. Keep giving out seats until they run out.',x:400,y:300},
+  {name:'Pure lottery',desc:'No requirements. Every name goes in the hat.',x:1200,y:300},
+  {name:'Philly now',desc:'Clear a bar, then a lottery. Priority for some ZIP codes.',x:400,y:645},
+  {name:'Sub-pools',desc:'Clear the bar for the lottery. 95th percentile and up can earn a guaranteed seat.',x:1200,y:645}];
+const TALLY={};
+function loadT(){try{Object.assign(TALLY,JSON.parse(localStorage.getItem('corners')||'{}'))}catch(e){}}
+function saveT(){try{localStorage.setItem('corners',JSON.stringify(TALLY))}catch(e){}}
+loadT();
+function cornersDraw(g){
+  seed=800;const items=[line(g,[[800,200],[801,840]],{w:3,amt:2}),line(g,[[130,475],[1470,476]],{w:3,amt:2})];
+  QUADS.forEach(q=>{items.push(write(g,q.x,q.y-60,q.name,{size:56,weight:700,anchor:'middle'}));
+    let yy=q.y-8;wrap(q.desc,38).forEach(t=>{items.push(write(g,q.x,yy,t,{size:28,anchor:'middle',color:'var(--soft)',speed:1.5}));yy+=38;});});
+  return items;
+}
+function tallyInputs(round){
+  const ov=$('overlay');ov.innerHTML='';
+  QUADS.forEach((q,k)=>{
+    const d=document.createElement('div');d.className='tally';d.style.left=q.x+'px';d.style.top=(q.y+105)+'px';d.style.transform='translateX(-50%)';
+    const key=round+k;
+    let html='<label for="t'+key+'">'+(round==='b'?'count':'now')+'</label><input id="t'+key+'" inputmode="numeric" aria-label="'+q.name+' count">';
+    if(round==='a')html='<span>before: '+(TALLY['b'+k]||'?')+'</span>'+html+'<span class="delta" id="d'+k+'"></span>';
+    d.innerHTML=html;ov.appendChild(d);
+    const inp=d.querySelector('input');inp.value=TALLY[key]||'';
+    const upd=()=>{TALLY[key]=inp.value;saveT();if(round==='a'){const b=parseInt(TALLY['b'+k]),a=parseInt(inp.value),dl=$('d'+k);
+      if(!isNaN(a)&&!isNaN(b)){const n=a-b;dl.textContent=(n>0?'+':'')+n;dl.style.color=n>0?'var(--blue)':n<0?'var(--red)':'var(--soft)';}else dl.textContent='';}};
+    inp.addEventListener('input',upd);upd();
+  });
+}
+
+/* ================= debate timer ================= */
+function debateScene(round,key){
+  return {notes:NOTES[key],
+    enter:async(g,ctx)=>{seed=900+round;
+      const rules=['One person from each corner: why yours is best, and why one other corner is wrong.','The corner you attacked gets to fire back.','Keep going until every corner has spoken.'];
+      const items=[title(g,'Debate, round '+round)];let y=240;
+      rules.forEach((r,k)=>{items.push(write(g,140,y,(k+1)+'.',{size:40,weight:700,color:'var(--red)'}));wrap(r,58).forEach(t=>{items.push(write(g,200,y,t,{size:36}));y+=50;});y+=26;});
+      await run(items,.4);
+      ctx.left=180;ctx.clock=el('text',{x:800,y:720,'font-size':190,'font-weight':700,'text-anchor':'middle'});ctx.clock.style.fill='var(--lead)';ctx.clock.style.stroke='none';
+      ctx.clock.textContent='3:00';g.appendChild(ctx.clock);
+      await run([write(g,800,790,'press T to start or pause the timer',{size:24,anchor:'middle',color:'var(--soft)'})]);
+    },
+    beats:[],
+    timer:ctx=>{
+      if(ctx.iv){clearInterval(ctx.iv);ctx.iv=null;return;}
+      ctx.iv=setInterval(()=>{ctx.left=Math.max(0,ctx.left-1);const m=Math.floor(ctx.left/60),s=ctx.left%60;
+        ctx.clock.textContent=ctx.left?m+':'+String(s).padStart(2,'0'):'Time.';ctx.clock.style.fill=ctx.left<=30?'var(--red)':'var(--lead)';
+        if(!ctx.left){clearInterval(ctx.iv);ctx.iv=null;}},1000);
+    },
+    leave:ctx=>{if(ctx.iv)clearInterval(ctx.iv)}
+  };
+}
+
+/* ================= speaker notes ================= */
+const NOTES={
+intro:'<b>Keep it to three sentences.</b> Press next for each one. Don\'t add anything yet, the corners do the work.',
+corners1:'<b>Corners, round 1.</b> Point to each corner of the room as you read it: top-left of the screen is the front-left corner, and so on. Say: "At face value. Go stand at the one that sounds best." Count each corner and click the boxes to type the numbers. Never say sub-pools is yours.',
+debate1:'<b>Debate round 1.</b> Pick one person per corner. They say why theirs is best AND which other corner is wrong. That corner fires back. Press T to start the 3 minute clock, and cut it when it hits zero.',
+merit:'<b>Pure merit.</b> Press next to run the sim, then two stories, then pros, then cons. Point out: zero cusp kids ever get in, and it never changes. No re-roll here because there is no luck.',
+lottery:'<b>Pure lottery.</b> After the sim, press R a couple of times so the room sees how wild it gets, including seats going below the 50th percentile.',
+now:'<b>Philly now.</b> The last press shows the fine print card: the real process has 5 rankings, one offer, fallbacks, and a matching algorithm. Read the last line to the class as a genuine offer. This is the real system. The triangles always get in first; everything else is luck. Re-roll once or twice and watch the 95th+ count jump around. The court challenge is real: a federal appeals court let the lawsuit go forward in February 2026.',
+pools:'<b>Sub-pools.</b> Present it exactly like the others, no hint that it\'s yours. Five steps, one press each. After step 5, re-roll: the 3 blue seats never move, only the red ones do. That\'s the whole idea.',
+corners2:'<b>Corners, round 2.</b> Same corners. Type the new counts and the +/- appears next to each. Call out the biggest move.',
+debate2:'<b>Debate round 2.</b> Same rules. Try to call on people who moved.',
+wrap:'<b>The reveal.</b> Press next: "Sub-pools is my design." Pause. Then the three reasons. Rewrite them in your own words before you present. End on "Thank you" and stop talking.'
+};
+
+/* ================= scenes ================= */
+const SCENES=[
+ {notes:NOTES.intro,
+  enter:async g=>{seed=11;await run([write(g,800,330,'Who gets the seat?',{size:150,weight:700,anchor:'middle'}),line(g,[[430,370],[800,362],[1170,372]],{w:5,color:'var(--red)',amt:4})],.5);},
+  beats:[
+   async g=>{seed=12;await run(wrap('High school selection is happening right now, and almost everyone in this room is applying.',70).map((t,k)=>write(g,800,480+k*50,t,{size:38,anchor:'middle',speed:1.3})),.8);},
+   async g=>{seed=13;await run(wrap('Magnet schools like Central and Carver only take students who meet requirements for grades, attendance, and test scores.',70).map((t,k)=>write(g,800,600+k*50,t,{size:38,anchor:'middle',speed:1.3})),.8);},
+   async g=>{seed=14;await run(wrap('More students qualify than there are seats, so the city needs a rule for who gets in.',70).map((t,k)=>write(g,800,730+k*50,t,{size:38,weight:700,anchor:'middle',color:'var(--red)',speed:1.3})),.8);}
+  ]},
+ {notes:NOTES.corners1,
+  enter:async g=>{await run([write(g,800,110,'Pick a corner',{size:72,weight:700,anchor:'middle'}),write(g,800,160,'At face value, which sounds best? Go stand there.',{size:30,anchor:'middle',color:'var(--soft)'})],.4);await run(cornersDraw(g),.3);tallyInputs('b');},
+  beats:[],leave:()=>{$('overlay').innerHTML=''}},
+ debateScene(1,'debate1'),
+ ...SYSTEMS.map(systemScene),
+ {notes:NOTES.corners2,
+  enter:async g=>{await run([write(g,800,110,'Pick again',{size:72,weight:700,anchor:'middle'}),write(g,800,160,'Now that you have seen all four. Move if you changed your mind.',{size:30,anchor:'middle',color:'var(--soft)'})],.4);await run(cornersDraw(g),.3);tallyInputs('a');},
+  beats:[],leave:()=>{$('overlay').innerHTML=''}},
+ debateScene(2,'debate2'),
+ {notes:NOTES.wrap,
+  enter:async g=>{seed=31;await run([write(g,800,200,'One more thing.',{size:72,weight:700,anchor:'middle',color:'var(--soft)'})]);},
+  beats:[
+   async g=>{seed=32;await run([write(g,800,340,'Sub-pools is my design.',{size:110,weight:700,anchor:'middle'}),line(g,[[330,372],[800,364],[1270,374]],{w:5,color:'var(--blue)',amt:4})],.5);},
+   async g=>{seed=33;const L=['Pure merit rewards whoever could afford the most prep.','A pure lottery treats years of work like luck.','Sub-pools gives everyone who qualifies a real shot, and gives proven students a path luck can\'t take away.'];
+     const items=[];let y=470;L.forEach((l,k)=>wrap(l,64).forEach(t=>{items.push(write(g,800,y,t,{size:36,anchor:'middle',weight:k===2?700:400,color:k===2?'var(--blue)':'var(--lead)',speed:1.3}));y+=52;}));await run(items,.8);},
+   async g=>{seed=34;await run([write(g,800,760,'Thank you.',{size:80,weight:700,anchor:'middle'}),
+     write(g,800,840,'Sources: School District of Philadelphia, WHYY, Chalkbeat, coverage of the 2026 Third Circuit ruling. All students shown are made up.',{size:20,anchor:'middle',color:'var(--soft)',speed:3})],.5);}
+  ]}
+];
+
+/* ================= player ================= */
+let si=0,bi=0,busy=false,ctx={};
+const sceneG=$('scene');
+async function enter(idx,upto=0,instant=false){
+  const cur=SCENES[si];if(cur&&cur.leave)cur.leave(ctx);
+  si=idx;bi=0;ctx={};sceneG.innerHTML='';$('overlay').innerHTML='';
+  $('notes').innerHTML=(SCENES[si].notes||'')+'<br><br><span style="opacity:.6">Keys: &rarr; next, &larr; back, R re-roll, T timer, N notes, F fullscreen</span>';
+  $('progress').style.width=((si+1)/SCENES.length*100)+'%';
+  try{history.replaceState(null,'','#'+(si+1));}catch(e){}
+  busy=true;fast=instant;
+  try{await SCENES[si].enter(sceneG,ctx);
+  while(bi<upto){await SCENES[si].beats[bi++](sceneG,ctx);}}catch(err){console.error(err)}
+  fast=false;busy=false;
+}
+function rush(){fast=true;[...pending].forEach(f=>f());document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}})}
+async function next(){
+  if(busy){rush();return;}
+  const S=SCENES[si];
+  if(bi<S.beats.length){busy=true;try{await S.beats[bi++](sceneG,ctx);}catch(err){console.error(err)}fast=false;busy=false;}
+  else if(si<SCENES.length-1)enter(si+1);
+}
+function back(){
+  if(busy)return;
+  if(bi>0)enter(si,bi-1,true);
+  else if(si>0)enter(si-1,SCENES[si-1].beats.length,true);
+}
+async function reroll(){const S=SCENES[si];if(busy||!S.reroll)return;busy=true;try{await S.reroll(sceneG,ctx);}catch(err){console.error(err)}fast=false;busy=false;}
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'){if(e.key==='Enter'||e.key==='Escape')e.target.blur();return;}
+  if(['ArrowRight',' ','PageDown','Enter'].includes(e.key)){e.preventDefault();next();}
+  else if(['ArrowLeft','PageUp','Backspace'].includes(e.key)){e.preventDefault();back();}
+  else if(e.key==='r'||e.key==='R')reroll();
+  else if(e.key==='t'||e.key==='T'){const S=SCENES[si];if(S.timer)S.timer(ctx);}
+  else if(e.key==='n'||e.key==='N')$('notes').classList.toggle('open');
+  else if(e.key==='f'||e.key==='F'){if(!document.fullscreenElement)document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();else document.exitFullscreen();}
+});
+$('nz').onclick=next;$('pz').onclick=back;
+let tx=null;
+addEventListener('touchstart',e=>{tx=e.touches[0].clientX},{passive:true});
+addEventListener('touchend',e=>{if(tx===null)return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>60)(dx<0?next:back)();tx=null;});
+
+let start=1;try{start=Math.max(1,Math.min(SCENES.length,parseInt((location.hash||'#1').slice(1))||1));}catch(e){}
+Promise.all(['400 30px Kalam','700 30px Kalam'].map(f=>document.fonts.load(f))).catch(()=>{}).then(()=>document.fonts.ready).then(()=>enter(start-1));
+})();
+</script>
+</body>
+</html>
