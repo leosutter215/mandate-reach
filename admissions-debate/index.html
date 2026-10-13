@@ -11,8 +11,8 @@
 :root{--paper:#f5f4f0;--grid:#dfe6ea;--lead:#34373a;--soft:#6d7176;--faint:#a9acae;--blue:#3f78b5;--red:#c9564a;--green:#4c8a5a;--hand:"Kalam","Segoe Print","Bradley Hand",cursive}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:#d9d8d2;overflow:hidden}
-body{display:grid;place-items:center;font-family:var(--hand)}
-#stage{width:1600px;height:900px;position:relative;transform-origin:center;background:var(--paper);box-shadow:0 2px 0 #cfcdc5,0 30px 70px rgba(0,0,0,.18)}
+body{font-family:var(--hand)}
+#stage{width:1600px;height:900px;position:absolute;left:50%;top:50%;transform-origin:center;transform:translate(-50%,-50%);background:var(--paper);box-shadow:0 2px 0 #cfcdc5,0 30px 70px rgba(0,0,0,.18)}
 #stage::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;opacity:.55}
 svg#board{position:absolute;inset:0;width:100%;height:100%}
 .ink{fill:none;stroke-linecap:round;stroke-linejoin:round;filter:url(#pencil)}
@@ -57,8 +57,10 @@ text{font-family:var(--hand);stroke-width:.8;stroke-opacity:.35}
 const NS='http://www.w3.org/2000/svg';
 const stage=document.getElementById('stage');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-function fit(){stage.style.transform='scale('+Math.min(innerWidth/1660,innerHeight/950)+')'}
-addEventListener('resize',fit);fit();
+function fit(){const w=document.documentElement.clientWidth||innerWidth,h=document.documentElement.clientHeight||innerHeight;
+  const s=Math.min(w/1600,h/900)*(document.fullscreenElement?1:0.97);
+  stage.style.transform='translate(-50%,-50%) scale('+s+')'}
+addEventListener('resize',fit);document.addEventListener('fullscreenchange',fit);fit();
 const $=id=>document.getElementById(id);
 const el=(tag,a={})=>{const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);return e};
 const sub=(parent)=>{const g=el('g');parent.appendChild(g);return g};
